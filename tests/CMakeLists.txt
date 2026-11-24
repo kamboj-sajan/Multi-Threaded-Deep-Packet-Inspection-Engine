@@ -28,4 +28,6 @@ function(dpi_add_test name)
   gtest_discover_tests(${name} DISCOVERY_MODE PRE_TEST)
 endfunction()
 
+add_subdirectory(support)
 add_subdirectory(pcap_io)
+add_subdirectory(parser)
