@@ -30,6 +30,7 @@ EngineConfig small_config() {
   c.num_lbs = 2;
   c.fps_per_lb = 2;
   c.queue_capacity = 2;  // tiny, so threads are blocked when the failure hits
+  c.batch_size = 1;
   return c;
 }
 
@@ -85,14 +86,16 @@ TEST(PipelineThreads, ReaderFailureStopsEveryThreadAndIsRethrown) {
 TEST(PipelineThreads, RejectsInvalidLayouts) {
   const Bytes input = many_packets_pcap(1);
   Bytes output;
-  for (const auto& [lbs, fps, queue] : std::vector<std::tuple<std::size_t, std::size_t, std::size_t>>{
-           {0, 1, 1}, {1, 0, 1}, {1, 1, 0}}) {
+  for (const auto& [lbs, fps, queue, batch] :
+       std::vector<std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>>{
+           {0, 1, 1, 1}, {1, 0, 1, 1}, {1, 1, 0, 1}, {1, 1, 1, 0}}) {
     PcapReader reader(std::make_unique<MemorySource>(input));
     PcapWriter writer(std::make_unique<MemorySink>(output), {});
     EngineConfig c;
     c.num_lbs = lbs;
     c.fps_per_lb = fps;
     c.queue_capacity = queue;
+    c.batch_size = batch;
     EXPECT_THROW(run_pipeline(reader, writer, c), std::invalid_argument);
   }
 }

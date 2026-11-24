@@ -46,8 +46,10 @@ TEST(Cli, DefaultsToTwoByTwoPipeline) {
 }
 
 TEST(Cli, ParsesThreadLayout) {
-  const auto r = parse_cli({"in", "out", "--lbs", "4", "--fps-per-lb", "3", "--queue-size", "64", "--sequential"});
+  const auto r = parse_cli({"in", "out", "--lbs", "4", "--fps-per-lb", "3", "--queue-size", "64",
+                            "--batch-size", "16", "--sequential"});
   ASSERT_TRUE(r.options.has_value()) << r.error;
+  EXPECT_EQ(r.options->batch_size, 16u);
   EXPECT_EQ(r.options->num_lbs, 4u);
   EXPECT_EQ(r.options->fps_per_lb, 3u);
   EXPECT_EQ(r.options->queue_size, 64u);

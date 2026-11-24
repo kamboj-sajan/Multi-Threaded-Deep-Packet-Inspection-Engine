@@ -15,6 +15,7 @@ struct CliOptions {
   std::size_t num_lbs = 2;
   std::size_t fps_per_lb = 2;
   std::size_t queue_size = 4096;
+  std::size_t batch_size = 64;
   bool sequential = false;  // Run the single-threaded baseline instead.
 };
 
@@ -22,6 +23,7 @@ struct CliOptions {
 inline constexpr std::size_t kMaxLbs = 64;
 inline constexpr std::size_t kMaxFpsPerLb = 64;
 inline constexpr std::size_t kMaxQueueSize = 1u << 20;
+inline constexpr std::size_t kMaxBatchSize = 4096;
 
 struct CliParseResult {
   std::optional<CliOptions> options;  // Set on success.

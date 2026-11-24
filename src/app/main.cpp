@@ -40,6 +40,7 @@ int run(const dpi::CliOptions& options) {
   config.num_lbs = options.num_lbs;
   config.fps_per_lb = options.fps_per_lb;
   config.queue_capacity = options.queue_size;
+  config.batch_size = options.batch_size;
   config.fast_path.rules = rules;
   const dpi::RunStats stats = options.sequential ? dpi::run_sequential(reader, writer, config)
                                                  : dpi::run_pipeline(reader, writer, config);

@@ -27,7 +27,8 @@ std::string usage_text() {
          "options:\n"
          "  --lbs <n>            load-balancer threads (default 2)\n"
          "  --fps-per-lb <n>     fast-path threads per load balancer (default 2)\n"
-         "  --queue-size <n>     capacity of each inter-thread queue (default 4096)\n"
+         "  --queue-size <n>     packets each inter-thread queue holds (default 4096)\n"
+         "  --batch-size <n>     packets handed between threads at once (default 64)\n"
          "  --sequential         run every stage on one thread (correctness baseline)\n"
          "  --rules <file>       blocking rules, e.g. rules/example_rules.txt\n"
          "  --report <file>      also write the report as JSON\n"
@@ -91,6 +92,10 @@ CliParseResult parse_cli(const std::vector<std::string>& args) {
       }
     } else if (arg == "--queue-size") {
       if (!count(options.queue_size, kMaxQueueSize)) {
+        return result;
+      }
+    } else if (arg == "--batch-size") {
+      if (!count(options.batch_size, kMaxBatchSize)) {
         return result;
       }
     } else if (arg == "--sequential") {

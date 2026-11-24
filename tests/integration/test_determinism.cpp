@@ -24,11 +24,12 @@ using test::run_file_pipeline;
 using test::run_file_sequential;
 using test::with_example_rules;
 
-EngineConfig layout(std::size_t lbs, std::size_t fps, std::size_t queue) {
+EngineConfig layout(std::size_t lbs, std::size_t fps, std::size_t queue, std::size_t batch = 64) {
   EngineConfig c;
   c.num_lbs = lbs;
   c.fps_per_lb = fps;
   c.queue_capacity = queue;
+  c.batch_size = batch;
   return c;
 }
 
@@ -119,7 +120,8 @@ TEST_P(Determinism, PipelineMatchesSequentialBaseline) {
 std::string layout_name(const ::testing::TestParamInfo<Determinism::ParamType>& info) {
   const auto& [capture, c] = info.param;
   std::string name = capture.substr(0, capture.find('.')) + "_" + std::to_string(c.num_lbs) + "x" +
-                     std::to_string(c.fps_per_lb) + "_q" + std::to_string(c.queue_capacity);
+                     std::to_string(c.fps_per_lb) + "_q" + std::to_string(c.queue_capacity) + "_b" +
+                     std::to_string(c.batch_size);
   return name;
 }
 
@@ -127,7 +129,8 @@ INSTANTIATE_TEST_SUITE_P(
     Layouts, Determinism,
     ::testing::Combine(::testing::Values("mixed.pcap", "malformed.pcap", "many_flows.pcap", "tls_split.pcap"),
                        ::testing::Values(layout(1, 1, 4096), layout(2, 2, 4096), layout(4, 4, 4096),
-                                         layout(3, 5, 16), layout(4, 4, 1), layout(1, 8, 2))),
+                                         layout(3, 5, 16, 7), layout(4, 4, 1, 1), layout(1, 8, 2, 1),
+                                         layout(2, 3, 64, 1000))),
     layout_name);
 
 // Same comparison with blocking rules loaded: verdicts are per flow, so
@@ -169,11 +172,14 @@ TEST(Pipeline, SpreadsFlowsAcrossEveryWorker) {
   EXPECT_EQ(fp_total, s.reader.packets);
 }
 
-// Repeated runs with a 1-slot queue: maximum contention for TSan to watch.
+// Repeated runs with 1-slot queues and tiny batches: maximum contention for
+// TSan to watch.
 TEST(Pipeline, RepeatedRunsUnderContentionAgree) {
-  const RunStats first = run_file_pipeline("many_flows.pcap", layout(4, 4, 1)).stats;
-  for (int i = 0; i < 4; ++i) {
-    expect_same_results(first, run_file_pipeline("many_flows.pcap", layout(4, 4, 1)).stats);
+  for (const std::size_t batch : {std::size_t{1}, std::size_t{3}}) {
+    const RunStats first = run_file_pipeline("many_flows.pcap", layout(4, 4, 1, batch)).stats;
+    for (int i = 0; i < 3; ++i) {
+      expect_same_results(first, run_file_pipeline("many_flows.pcap", layout(4, 4, 1, batch)).stats);
+    }
   }
 }
 
