@@ -22,6 +22,16 @@ Counts below are computed by the generator from what it built.
 - flows: 30
 - snaplen-truncated packets (caplen < origlen): 1
 
+With `rules/example_rules.txt`:
+
+- dropped packets: 59
+- forwarded packets: 185
+- blocked flows: 7
+  - by ip: 2
+  - by port: 1
+  - by app: 3
+  - by domain: 1
+
 Expected classification (flows by app):
 
 - DNS: 3
@@ -103,6 +113,12 @@ Flows:
 - flows: 1
 - snaplen-truncated packets (caplen < origlen): 0
 
+With `rules/example_rules.txt`:
+
+- dropped packets: 0
+- forwarded packets: 2
+- blocked flows: 0
+
 Expected classification (flows by app):
 
 - Unknown: 1
@@ -131,6 +147,13 @@ Flows:
 - malformed packets: 0
 - flows: 1000
 - snaplen-truncated packets (caplen < origlen): 0
+
+With `rules/example_rules.txt`:
+
+- dropped packets: 1269
+- forwarded packets: 7731
+- blocked flows: 141
+  - by app: 141
 
 Expected classification (flows by app):
 
@@ -165,6 +188,13 @@ Flows by SNI / Host:
 - malformed packets: 0
 - flows: 4
 - snaplen-truncated packets (caplen < origlen): 0
+
+With `rules/example_rules.txt`:
+
+- dropped packets: 7
+- forwarded packets: 43
+- blocked flows: 1
+  - by app: 1
 
 Expected classification (flows by app):
 

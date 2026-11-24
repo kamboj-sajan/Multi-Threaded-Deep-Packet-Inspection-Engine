@@ -67,6 +67,9 @@ class FlowSpec:
     sni: str | None = None       # expected SNI / HTTP Host
     app: str | None = None       # expected application name
     note: str = ""
+    # Which client payload packet (1-based) completes classification; >1
+    # when the ClientHello / request is split across segments.
+    decisive_client_payload: int = 1
 
 
 @dataclass
@@ -271,7 +274,8 @@ class Builder:
             # Frames: SYN, SYN-ACK, ACK, then (data, ack) per exchange.
             frames[3], frames[5] = frames[5], frames[3]
             note += ", second segment first"
-        return FlowSpec(frames, sni=None if reorder else sni, app=app, note=note)
+        return FlowSpec(frames, sni=None if reorder else sni, app=app, note=note,
+                        decisive_client_payload=segments)
 
     def split_http(self, cip, sip, cport, host, app) -> FlowSpec:
         """HTTP request whose Host header is in the second TCP segment."""
@@ -279,7 +283,8 @@ class Builder:
         second = f"Host: {host}\r\n\r\n".encode()
         response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
         frames = self.tcp_session(cip, sip, cport, 80, [(True, first), (True, second), (False, response)])
-        return FlowSpec(frames, sni=host, app=app, note="HTTP request in 2 segments")
+        return FlowSpec(frames, sni=host, app=app, note="HTTP request in 2 segments",
+                        decisive_client_payload=2)
 
     def http(self, cip, sip, cport, host, app) -> FlowSpec:
         request = (f"GET / HTTP/1.1\r\nHost: {host}\r\nUser-Agent: dpi-test/1.0\r\n"
@@ -479,6 +484,112 @@ def write_pcap(path: Path, frames: list[Frame], truncated_tail: bool) -> None:
             f.write(b"\xAB" * 30)
 
 
+# --------------------------------------------------------------------------
+# Expected verdicts: an independent model of the engine's rule semantics
+# --------------------------------------------------------------------------
+
+RULES_FILE = Path("rules/example_rules.txt")
+
+PORT_APPS = {(6, 443): "HTTPS", (6, 80): "HTTP", (6, 8080): "HTTP", (6, 53): "DNS", (6, 22): "SSH",
+             (17, 53): "DNS", (17, 443): "QUIC", (17, 123): "NTP"}
+
+
+@dataclass
+class Rules:
+    networks: list = field(default_factory=list)   # ipaddress.IPv4Network
+    ports: set = field(default_factory=set)
+    apps: set = field(default_factory=set)        # lower-case names
+    exact_hosts: set = field(default_factory=set)
+    host_suffixes: set = field(default_factory=set)
+
+    @staticmethod
+    def load(path: Path) -> "Rules":
+        r = Rules()
+        for line in path.read_text().splitlines():
+            words = line.split("#", 1)[0].split()
+            if not words:
+                continue
+            kind, value = words[1].lower(), words[2]
+            if kind == "ip":
+                r.networks.append(ipaddress.IPv4Network(value, strict=False))
+            elif kind == "port":
+                r.ports.add(int(value))
+            elif kind == "app":
+                r.apps.add(value.lower())
+            elif kind == "domain":
+                if value.startswith("*."):
+                    r.host_suffixes.add(value[2:].lower())
+                else:
+                    r.exact_hosts.add(value.lower().rstrip("."))
+        return r
+
+    def blocks_host(self, host: str | None) -> bool:
+        if not host:
+            return False
+        labels = host.split(".")
+        return host in self.exact_hosts or any(
+            ".".join(labels[i:]) in self.host_suffixes for i in range(len(labels)))
+
+    def reason_at_creation(self, ips, ports, app) -> str | None:
+        if any(ipaddress.IPv4Address(ip) in net for ip in ips for net in self.networks):
+            return "ip"
+        if any(p in self.ports for p in ports):
+            return "port"
+        if app and app.lower() in self.apps:
+            return "app"
+        return None
+
+    def reason_after_inspection(self, app, host) -> str | None:
+        if app and app.lower() in self.apps:
+            return "app"
+        if self.blocks_host(host):
+            return "domain"
+        return None
+
+
+def expected_drops(capture: Capture, rules: Rules) -> tuple[int, Counter]:
+    """Packets dropped and flows blocked (by reason) under `rules`.
+
+    Rules are checked when a flow starts (ip, port, port-based app) and
+    again when its first payload has been classified; from that packet on,
+    every packet of the flow is dropped.
+    """
+    dropped = 0
+    blocked = Counter()
+    for spec in capture.flows:
+        by_key: dict[tuple, list[Frame]] = {}
+        for fr in spec.frames:
+            if fr.key is not None:
+                by_key.setdefault(fr.key, []).append(fr)
+        for key, frames in by_key.items():
+            (ip_lo, port_lo), (ip_hi, port_hi), proto = key
+            ips = [str(ipaddress.IPv4Address(ip_lo)), str(ipaddress.IPv4Address(ip_hi))]
+            first = Ether(frames[0].data)
+            client = first[IP].src
+            server_port = port_hi if str(ipaddress.IPv4Address(ip_lo)) == client else port_lo
+            port_app = PORT_APPS.get((proto, server_port), "Unknown")
+
+            reason = rules.reason_at_creation(ips, [port_lo, port_hi], port_app)
+            if reason:
+                dropped += len(frames)
+                blocked[reason] += 1
+                continue
+            reason = rules.reason_after_inspection(spec.app, spec.sni)
+            if not reason or proto != 6:
+                continue
+            # Index of the client payload packet that completes classification.
+            seen = 0
+            for i, fr in enumerate(frames):
+                pkt = Ether(fr.data)
+                if pkt[IP].src == client and TCP in pkt and len(pkt[TCP].payload) > 0:
+                    seen += 1
+                    if seen == spec.decisive_client_payload:
+                        dropped += len(frames) - i
+                        blocked[reason] += 1
+                        break
+    return dropped, blocked
+
+
 def summarise(capture: Capture, frames: list[Frame]) -> list[str]:
     labels = Counter(fr.label for fr in frames)
     malformed = {k: v for k, v in labels.items() if k not in ("ok", "non_ip")}
@@ -496,6 +607,16 @@ def summarise(capture: Capture, frames: list[Frame]) -> list[str]:
     lines.append(f"- flows: {len(flows)}")
     lines.append(f"- snaplen-truncated packets (caplen < origlen): "
                  f"{sum(1 for fr in frames if fr.orig_len)}")
+
+    dropped, blocked = expected_drops(capture, Rules.load(RULES_FILE))
+    forwardable = labels["ok"] + labels["non_ip"]
+    lines += ["", f"With `{RULES_FILE}`:", "",
+              f"- dropped packets: {dropped}",
+              f"- forwarded packets: {forwardable - dropped}",
+              f"- blocked flows: {sum(blocked.values())}"]
+    for reason in ("ip", "port", "app", "domain"):
+        if blocked[reason]:
+            lines.append(f"  - by {reason}: {blocked[reason]}")
 
     # Count engine flows (distinct keys), since one generated exchange can
     # legitimately become two flows (IP fragments).

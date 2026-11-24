@@ -20,15 +20,9 @@ namespace {
 using test::data_path;
 using test::read_all;
 using test::RunOutput;
+using test::run_file_pipeline;
 using test::run_file_sequential;
-
-RunOutput run_file_pipeline(const std::string& name, const EngineConfig& config) {
-  RunOutput out;
-  PcapReader reader = PcapReader::open_file(data_path(name));
-  PcapWriter writer(std::make_unique<MemorySink>(out.pcap), {.precision = reader.info().precision});
-  out.stats = run_pipeline(reader, writer, config);
-  return out;
-}
+using test::with_example_rules;
 
 EngineConfig layout(std::size_t lbs, std::size_t fps, std::size_t queue) {
   EngineConfig c;
@@ -135,6 +129,27 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(layout(1, 1, 4096), layout(2, 2, 4096), layout(4, 4, 4096),
                                          layout(3, 5, 16), layout(4, 4, 1), layout(1, 8, 2))),
     layout_name);
+
+// Same comparison with blocking rules loaded: verdicts are per flow, so
+// they must not depend on the thread layout either.
+TEST(Determinism, VerdictsWithRulesMatchSequentialBaseline) {
+  for (const char* capture : {"mixed.pcap", "many_flows.pcap", "tls_split.pcap"}) {
+    const RunOutput baseline = run_file_sequential(capture, with_example_rules());
+    ASSERT_GT(baseline.stats.dropped(), 0u) << capture;
+    for (const EngineConfig& layout_config : {layout(1, 1, 64), layout(4, 4, 4096), layout(3, 5, 1)}) {
+      SCOPED_TRACE(std::string(capture) + " " + std::to_string(layout_config.num_lbs) + "x" +
+                   std::to_string(layout_config.fps_per_lb));
+      const RunOutput threaded = run_file_pipeline(capture, with_example_rules(layout_config));
+      expect_same_results(baseline.stats, threaded.stats);
+      EXPECT_EQ(threaded.stats.merged_fast_path().flows_blocked_by_reason,
+                baseline.stats.merged_fast_path().flows_blocked_by_reason);
+      const std::vector<Packet> want = read_all(baseline.pcap);
+      const std::vector<Packet> got = read_all(threaded.pcap);
+      EXPECT_EQ(sorted_contents(got), sorted_contents(want));
+      EXPECT_EQ(per_flow_order(got), per_flow_order(want));
+    }
+  }
+}
 
 TEST(Pipeline, SpreadsFlowsAcrossEveryWorker) {
   const RunStats s = run_file_pipeline("many_flows.pcap", layout(4, 4, 256)).stats;
