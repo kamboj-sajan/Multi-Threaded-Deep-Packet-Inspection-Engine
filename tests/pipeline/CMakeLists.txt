@@ -1,1 +1,1 @@
-dpi_add_test(test_pipeline SOURCES test_stages.cpp test_report.cpp LIBS dpi::pipeline dpi::test_support)
+dpi_add_test(test_pipeline SOURCES test_stages.cpp test_report.cpp test_pipeline_threads.cpp LIBS dpi::pipeline dpi::test_support)
