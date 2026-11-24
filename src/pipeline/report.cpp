@@ -141,7 +141,7 @@ std::string format_text_report(const RunStats& s) {
       << row.counters.bytes << '\n';
   }
 
-  o << "Top SNIs (flows)\n";
+  o << "Top SNIs / HTTP hosts (flows)\n";
   const auto snis = top_snis(fp, kTopSniCount);
   if (snis.empty()) {
     o << "  (none)\n";
