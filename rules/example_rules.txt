@@ -1,0 +1,20 @@
+# Example blocking rules for dpi_engine.
+#
+#   dpi_engine in.pcap out.pcap --rules rules/example_rules.txt
+#
+# One rule per line; '#' starts a comment; keywords are case-insensitive.
+#   block ip <a.b.c.d>[/<prefix>]   either endpoint has the address (or is in the block)
+#   block port <1-65535>            either endpoint uses the port
+#   block app <AppName>             flow classified as the app (YouTube, Netflix, ...)
+#   block domain <name>             SNI / HTTP Host is exactly <name>
+#   block domain *.<name>           ...<name> itself or any subdomain
+#
+# Verdicts are per flow: once a flow matches, all its later packets are
+# dropped. ip/port rules match from a flow's first packet; app/domain rules
+# match once the SNI or Host is seen, so the TCP handshake before it is
+# forwarded.
+
+block ip 192.168.1.50
+block domain *.tiktok.com
+block app YouTube
+block port 6881

@@ -4,6 +4,7 @@
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include "dpi/pcap_io/pcap_writer.hpp"
 #include "dpi/pipeline/engine.hpp"
 #include "dpi/pipeline/report.hpp"
+#include "dpi/rules/rule_set.hpp"
 
 namespace {
 
@@ -20,6 +22,13 @@ constexpr int kExitRuntimeError = 1;
 constexpr int kExitUsage = 2;
 
 int run(const dpi::CliOptions& options) {
+  // Load rules first so a typo in the rules file fails before any output
+  // file is created.
+  std::shared_ptr<const dpi::RuleSet> rules;
+  if (options.rules_path) {
+    rules = dpi::RuleSet::load_file(*options.rules_path);
+    std::cout << "Loaded " << rules->size() << " rules from " << *options.rules_path << "\n";
+  }
   dpi::PcapReader reader = dpi::PcapReader::open_file(options.input_path);
   // Mirror the input's format so timestamps keep their precision.
   dpi::PcapWriter writer = dpi::PcapWriter::create_file(
@@ -31,6 +40,7 @@ int run(const dpi::CliOptions& options) {
   config.num_lbs = options.num_lbs;
   config.fps_per_lb = options.fps_per_lb;
   config.queue_capacity = options.queue_size;
+  config.fast_path.rules = rules;
   const dpi::RunStats stats = options.sequential ? dpi::run_sequential(reader, writer, config)
                                                  : dpi::run_pipeline(reader, writer, config);
 

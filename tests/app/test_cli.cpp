@@ -13,6 +13,13 @@ TEST(Cli, ParsesPositionalArgumentsAndReport) {
   EXPECT_EQ(r.options->report_path, "r.json");
 }
 
+TEST(Cli, ParsesRulesPath) {
+  const auto r = parse_cli({"in", "out", "--rules", "rules/example_rules.txt"});
+  ASSERT_TRUE(r.options.has_value()) << r.error;
+  EXPECT_EQ(r.options->rules_path, "rules/example_rules.txt");
+  EXPECT_FALSE(parse_cli({"in", "out", "--rules"}).options.has_value());
+}
+
 TEST(Cli, OptionsMayPrecedePositionals) {
   const auto r = parse_cli({"--report", "r.json", "in.pcap", "out.pcap"});
   ASSERT_TRUE(r.options.has_value()) << r.error;

@@ -11,6 +11,7 @@ struct CliOptions {
   std::string input_path;
   std::string output_path;
   std::optional<std::string> report_path;
+  std::optional<std::string> rules_path;
   std::size_t num_lbs = 2;
   std::size_t fps_per_lb = 2;
   std::size_t queue_size = 4096;

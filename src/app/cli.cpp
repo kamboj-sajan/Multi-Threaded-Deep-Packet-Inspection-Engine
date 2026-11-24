@@ -29,6 +29,7 @@ std::string usage_text() {
          "  --fps-per-lb <n>     fast-path threads per load balancer (default 2)\n"
          "  --queue-size <n>     capacity of each inter-thread queue (default 4096)\n"
          "  --sequential         run every stage on one thread (correctness baseline)\n"
+         "  --rules <file>       blocking rules, e.g. rules/example_rules.txt\n"
          "  --report <file>      also write the report as JSON\n"
          "  -h, --help           show this help\n";
 }
@@ -68,7 +69,13 @@ CliParseResult parse_cli(const std::vector<std::string>& args) {
       return true;
     };
 
-    if (arg == "--report") {
+    if (arg == "--rules") {
+      const auto v = value();
+      if (!v) {
+        return result;
+      }
+      options.rules_path = *v;
+    } else if (arg == "--report") {
       const auto v = value();
       if (!v) {
         return result;
