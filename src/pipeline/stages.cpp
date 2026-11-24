@@ -61,8 +61,17 @@ Verdict FastPathStage::process(const Packet& packet, const ParsedPacket& parsed)
   Verdict verdict = Verdict::Forward;
   if (parsed.l3 == L3Kind::Ipv4) {
     const Tracked tracked = track_flow(packet, parsed);
-    inspector_.inspect(*tracked.flow, parsed, packet.data(), tracked.from_client);
-    verdict = tracked.flow->verdict;
+    FlowEntry& flow = *tracked.flow;
+    const bool was_inspected = flow.inspection_done;
+    inspector_.inspect(flow, parsed, packet.data(), tracked.from_client);
+    // Rules run when a flow appears (ip/port/port-based app rules can
+    // block it from its first packet) and once more when inspection has
+    // decided the app and host. Packets sent before that - the TCP
+    // handshake, typically - are therefore forwarded.
+    if (tracked.created || (!was_inspected && flow.inspection_done)) {
+      apply_rules(flow);
+    }
+    verdict = flow.verdict;
   } else {
     ++stats_.non_ip;  // No flow to attach it to; carried through untouched.
   }
@@ -96,7 +105,19 @@ FastPathStage::Tracked FastPathStage::track_flow(const Packet& packet, const Par
   if (parsed.l4 == L4Kind::Tcp) {
     flow->tcp.on_packet(parsed.tcp_flags, from_client);
   }
-  return {flow, from_client};
+  return {flow, from_client, created};
+}
+
+void FastPathStage::apply_rules(FlowEntry& flow) const {
+  if (!config_.rules || flow.verdict == Verdict::Drop) {
+    return;  // no rules, or already blocked (verdicts are sticky)
+  }
+  const FlowFacts facts{flow.key.ip_lo, flow.key.ip_hi, flow.key.port_lo, flow.key.port_hi, flow.app, flow.sni};
+  const BlockReason reason = config_.rules->evaluate(facts);
+  if (reason != BlockReason::None) {
+    flow.verdict = Verdict::Drop;
+    flow.blocked_by = reason;
+  }
 }
 
 void FastPathStage::record_retired_flow(const FlowEntry& flow) {
@@ -109,6 +130,7 @@ void FastPathStage::record_retired_flow(const FlowEntry& flow) {
   }
   if (flow.verdict == Verdict::Drop) {
     ++stats_.flows_blocked;
+    ++stats_.flows_blocked_by_reason[static_cast<std::size_t>(flow.blocked_by)];
   }
 }
 

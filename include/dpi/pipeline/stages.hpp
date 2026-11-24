@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 #include "dpi/classifier/classifier.hpp"
@@ -16,6 +17,7 @@
 #include "dpi/pcap_io/pcap_writer.hpp"
 #include "dpi/pipeline/flow_inspector.hpp"
 #include "dpi/pipeline/stats.hpp"
+#include "dpi/rules/rule_set.hpp"
 
 namespace dpi {
 
@@ -79,6 +81,9 @@ struct FastPathConfig {
   InspectionConfig inspection;
   // Shared, immutable domain table; nullptr means the built-in one.
   const Classifier* classifier = nullptr;
+  // Shared, immutable blocking rules; nullptr means forward everything.
+  // Each FP copies this pointer once at construction, never per packet.
+  std::shared_ptr<const RuleSet> rules;
   // How often (in capture time) to sweep idle flows out of memory.
   std::uint64_t sweep_interval_ns = 1'000'000'000ULL;
 };
@@ -103,9 +108,11 @@ class FastPathStage {
   struct Tracked {
     FlowEntry* flow;
     bool from_client;
+    bool created;
   };
   Tracked track_flow(const Packet& packet, const ParsedPacket& parsed);
   void record_retired_flow(const FlowEntry& flow);
+  void apply_rules(FlowEntry& flow) const;
   void maybe_sweep(std::uint64_t now_ns);
 
   FastPathConfig config_;

@@ -46,6 +46,7 @@ struct FpStats {
   std::uint64_t flows_expired = 0;
   std::uint64_t flows_evicted = 0;
   std::uint64_t flows_blocked = 0;
+  std::array<std::uint64_t, kBlockReasonCount> flows_blocked_by_reason{};
   std::array<AppCounters, kAppCount> apps{};
   std::unordered_map<std::string, std::uint64_t> sni_flows;  // SNI -> flow count
 

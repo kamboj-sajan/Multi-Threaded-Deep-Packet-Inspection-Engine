@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "dpi/pipeline/stages.hpp"
+#include "connection.hpp"
 #include "pcap_builder.hpp"
 #include "tls_builder.hpp"
 
@@ -14,12 +15,8 @@ namespace dpi {
 namespace {
 
 using test::Bytes;
+using test::Connection;
 using test::FrameSpec;
-
-constexpr std::uint8_t kSyn = tcpflag::kSyn;
-constexpr std::uint8_t kSynAck = tcpflag::kSyn | tcpflag::kAck;
-constexpr std::uint8_t kAck = tcpflag::kAck;
-constexpr std::uint8_t kPshAck = tcpflag::kPsh | tcpflag::kAck;
 
 Bytes hello_for(const std::string& sni) {
   test::HelloSpec s;
@@ -29,52 +26,6 @@ Bytes hello_for(const std::string& sni) {
 }
 
 Bytes text(const std::string& s) { return Bytes(s.begin(), s.end()); }
-
-// Drives one TCP connection through a FastPathStage.
-class Connection {
- public:
-  explicit Connection(FastPathStage& fp, std::uint16_t server_port = 443, std::uint16_t client_port = 40000)
-      : fp_(fp), server_port_(server_port), client_port_(client_port) {}
-
-  void handshake() {
-    send(true, kSyn, {});
-    send(false, kSynAck, {});
-    send(true, kAck, {});
-  }
-
-  // Sends `payload` from the client with the next sequence number.
-  void client(const Bytes& payload, std::uint32_t seq_override = 0) {
-    send(true, kPshAck, payload, seq_override);
-  }
-  void server(const Bytes& payload) { send(false, kPshAck, payload); }
-
- private:
-  void send(bool from_client, std::uint8_t flags, const Bytes& payload, std::uint32_t seq_override = 0) {
-    FrameSpec s = test::tcp_spec(payload);
-    s.tcp_flags = flags;
-    s.src_ip = from_client ? test::ip(10, 0, 0, 1) : test::ip(10, 0, 0, 2);
-    s.dst_ip = from_client ? test::ip(10, 0, 0, 2) : test::ip(10, 0, 0, 1);
-    s.src_port = from_client ? client_port_ : server_port_;
-    s.dst_port = from_client ? server_port_ : client_port_;
-    std::uint32_t& seq = from_client ? client_seq_ : server_seq_;
-    s.tcp_seq = seq_override != 0 ? seq_override : seq;
-    if (seq_override == 0) {
-      seq += static_cast<std::uint32_t>(payload.size()) + ((flags & kSyn) ? 1 : 0);
-    }
-    Packet p;
-    p.bytes = test::build_frame(s);
-    p.orig_len = p.caplen();
-    ParsedPacket parsed;
-    ASSERT_EQ(parse_packet(p.data(), parsed), ParseStatus::Ok);
-    fp_.process(p, parsed);
-  }
-
-  FastPathStage& fp_;
-  std::uint16_t server_port_;
-  std::uint16_t client_port_;
-  std::uint32_t client_seq_ = 1000;
-  std::uint32_t server_seq_ = 5000;
-};
 
 struct Outcome {
   AppId app;

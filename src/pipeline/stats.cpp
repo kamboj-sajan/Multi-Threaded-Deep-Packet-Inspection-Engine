@@ -14,6 +14,9 @@ void FpStats::merge(const FpStats& other) {
   flows_expired += other.flows_expired;
   flows_evicted += other.flows_evicted;
   flows_blocked += other.flows_blocked;
+  for (std::size_t i = 0; i < flows_blocked_by_reason.size(); ++i) {
+    flows_blocked_by_reason[i] += other.flows_blocked_by_reason[i];
+  }
   for (std::size_t i = 0; i < apps.size(); ++i) {
     apps[i].flows += other.apps[i].flows;
     apps[i].packets += other.apps[i].packets;

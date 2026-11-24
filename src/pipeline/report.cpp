@@ -109,6 +109,12 @@ std::string format_text_report(const RunStats& s) {
   o << "Flows\n";
   o << "  total        " << std::setw(12) << fp.flows_created << '\n';
   o << "  blocked      " << std::setw(12) << fp.flows_blocked << '\n';
+  for (std::size_t i = 1; i < kBlockReasonCount; ++i) {
+    if (fp.flows_blocked_by_reason[i] > 0) {
+      o << "    by " << std::left << std::setw(20) << to_string(static_cast<BlockReason>(i)) << std::right
+        << std::setw(8) << fp.flows_blocked_by_reason[i] << '\n';
+    }
+  }
   o << "  idle-expired " << std::setw(12) << fp.flows_expired << '\n';
   o << "  evicted      " << std::setw(12) << fp.flows_evicted << '\n';
 
@@ -175,6 +181,12 @@ std::string format_json_report(const RunStats& s) {
 
   o << "  \"flows\": {\"total\": " << fp.flows_created << ", \"blocked\": " << fp.flows_blocked
     << ", \"idle_expired\": " << fp.flows_expired << ", \"evicted\": " << fp.flows_evicted << "},\n";
+  o << "  \"blocked_flows_by_rule\": {";
+  for (std::size_t i = 1; i < kBlockReasonCount; ++i) {
+    o << (i > 1 ? ", " : "") << '"' << to_string(static_cast<BlockReason>(i)) << "\": "
+      << fp.flows_blocked_by_reason[i];
+  }
+  o << "},\n";
 
   o << "  \"threads\": {\n";
   o << "    \"num_lbs\": " << s.num_lbs << ", \"fps_per_lb\": " << s.fps_per_lb << ",\n";

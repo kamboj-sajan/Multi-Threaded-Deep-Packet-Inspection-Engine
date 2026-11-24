@@ -34,7 +34,10 @@ struct FlowEntry {
   std::string sni;              // TLS SNI or HTTP Host, lower-cased.
   std::uint8_t payload_packets_inspected = 0;
   bool inspection_done = false;  // Classified, or gave up: fast path from now on.
+  // Flow-level verdict. Once Drop it stays Drop: every later packet of the
+  // flow is dropped without evaluating rules again.
   Verdict verdict = Verdict::Forward;
+  BlockReason blocked_by = BlockReason::None;
 
   // Minimal reassembly of the client's first bytes, used only while a
   // ClientHello / HTTP request is split across TCP segments. Empty (and
