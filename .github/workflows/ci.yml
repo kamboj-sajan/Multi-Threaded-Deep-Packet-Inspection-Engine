@@ -1,5 +1,9 @@
 name: CI
 
+# Runners are pinned to ubuntu-24.04 (GCC 13, Clang 18) to match
+# tools/docker, and every compiler is installed explicitly rather than
+# relying on what the runner image happens to ship.
+
 on:
   push:
     branches: [main]
@@ -8,7 +12,7 @@ on:
 jobs:
   build-and-test:
     name: ${{ matrix.compiler }} / ${{ matrix.preset }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -17,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y ninja-build tcpdump
+        run: sudo apt-get update && sudo apt-get install -y ninja-build tcpdump clang-18
       - name: Select compiler
         run: |
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
@@ -31,7 +35,7 @@ jobs:
 
   sanitizers:
     name: clang-18 / ${{ matrix.preset }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
