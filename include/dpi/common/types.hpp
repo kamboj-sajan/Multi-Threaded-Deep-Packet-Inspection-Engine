@@ -20,6 +20,21 @@ inline constexpr const char* to_string(Verdict v) noexcept {
   return v == Verdict::Forward ? "forward" : "drop";
 }
 
+// Which kind of rule blocked a flow (None if it was not blocked).
+enum class BlockReason : std::uint8_t { None, Ip, Port, App, Domain };
+inline constexpr std::size_t kBlockReasonCount = 5;
+
+inline constexpr const char* to_string(BlockReason r) noexcept {
+  switch (r) {
+    case BlockReason::None: return "none";
+    case BlockReason::Ip: return "ip";
+    case BlockReason::Port: return "port";
+    case BlockReason::App: return "app";
+    case BlockReason::Domain: return "domain";
+  }
+  return "unknown";
+}
+
 // Applications the classifier can name. HTTPS / HTTP / DNS / QUIC are the
 // port-based fallbacks used when no domain matched.
 enum class AppId : std::uint8_t {
