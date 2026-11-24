@@ -2,3 +2,4 @@
 add_subdirectory(common)
 add_subdirectory(pcap_io)
 add_subdirectory(parser)
+add_subdirectory(flow)
