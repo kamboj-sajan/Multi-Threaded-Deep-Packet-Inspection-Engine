@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <vector>
 #include <random>
 #include <unordered_set>
 
@@ -288,6 +290,27 @@ TEST(FlowTable, EntryPointersSurviveOtherInsertions) {
   std::size_t visited = 0;
   table.for_each([&](const FlowEntry&) { ++visited; });
   EXPECT_EQ(visited, 5000u);
+}
+
+TEST(FlowTable, RetireCallbackSeesEveryFlowExactlyOnce) {
+  FlowTable table({.idle_timeout_ns = 10 * kSec, .max_flows = 2});
+  std::vector<std::uint64_t> retired_packets;
+  table.set_retire_callback([&](const FlowEntry& e) { retired_packets.push_back(e.total_packets()); });
+
+  auto add_packet = [&](std::uint32_t flow, std::uint64_t ts) {
+    FlowEntry* e = table.find_or_create(key_of(flow), Direction::LoToHi, 0, ts).entry;
+    e->account(Direction::LoToHi, 10, ts);
+  };
+  add_packet(0, 0);
+  add_packet(0, 1);
+  add_packet(1, 2);
+  add_packet(2, 3);        // table full: flow 0 (LRU) evicted with 2 packets
+  add_packet(1, 20 * kSec);  // flow 1 idle > 10s: retired with 1 packet, restarted
+  table.retire_all();      // flows 2 (1 packet) and the new flow 1 (1 packet)
+
+  std::sort(retired_packets.begin(), retired_packets.end());
+  EXPECT_EQ(retired_packets, (std::vector<std::uint64_t>{1, 1, 1, 2}));
+  EXPECT_EQ(table.size(), 0u);
 }
 
 TEST(AppId, NamesRoundTripCaseInsensitively) {

@@ -41,6 +41,7 @@ FlowTable::LookupResult FlowTable::find_or_create(const FiveTuple& key, Directio
     touch(found->second);
     if (is_idle(entry, now_ns)) {
       ++stats_.expired_idle;
+      retire(entry);
       reset_entry(entry, direction, tcp_flags, now_ns);
       return {&entry, true};
     }
@@ -51,6 +52,7 @@ FlowTable::LookupResult FlowTable::find_or_create(const FiveTuple& key, Directio
     // Reclaim idle flows first; only if none are idle evict the LRU one.
     expire_idle(now_ns);
     if (index_.size() >= config_.max_flows) {
+      retire(lru_.back());
       index_.erase(lru_.back().key);
       lru_.pop_back();
       ++stats_.evicted_capacity;
@@ -72,6 +74,7 @@ FlowEntry* FlowTable::find(const FiveTuple& key) noexcept {
 
 FlowEntry& FlowTable::restart(FlowEntry& entry, Direction direction, std::uint8_t tcp_flags,
                               std::uint64_t now_ns) {
+  retire(entry);
   reset_entry(entry, direction, tcp_flags, now_ns);
   return entry;
 }
@@ -80,12 +83,21 @@ std::size_t FlowTable::expire_idle(std::uint64_t now_ns) {
   std::size_t removed = 0;
   // The list is in recency order, so idle flows are all at the back.
   while (!lru_.empty() && is_idle(lru_.back(), now_ns)) {
+    retire(lru_.back());
     index_.erase(lru_.back().key);
     lru_.pop_back();
     ++stats_.expired_idle;
     ++removed;
   }
   return removed;
+}
+
+void FlowTable::retire_all() {
+  for (const FlowEntry& e : lru_) {
+    retire(e);
+  }
+  lru_.clear();
+  index_.clear();
 }
 
 }  // namespace dpi

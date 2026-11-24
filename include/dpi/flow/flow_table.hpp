@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <unordered_map>
 
@@ -38,6 +39,12 @@ class FlowTable {
  public:
   explicit FlowTable(FlowTableConfig config = {});
 
+  // Called with each flow's final state just before it leaves the table
+  // (idle expiry, capacity eviction, restart, or retire_all). This is where
+  // per-flow results become statistics, like a NetFlow record export.
+  using RetireCallback = std::function<void(const FlowEntry&)>;
+  void set_retire_callback(RetireCallback callback) { on_retire_ = std::move(callback); }
+
   struct LookupResult {
     FlowEntry* entry;  // Valid until the next mutating call.
     bool created;
@@ -62,6 +69,9 @@ class FlowTable {
   // results.
   std::size_t expire_idle(std::uint64_t now_ns);
 
+  // Retires every remaining flow (end of input) and empties the table.
+  void retire_all();
+
   std::size_t size() const noexcept { return index_.size(); }
   const FlowTableStats& stats() const noexcept { return stats_; }
   const FlowTableConfig& config() const noexcept { return config_; }
@@ -80,11 +90,17 @@ class FlowTable {
   void reset_entry(FlowEntry& e, Direction direction, std::uint8_t tcp_flags,
                    std::uint64_t now_ns) noexcept;
   void touch(List::iterator it) noexcept;
+  void retire(const FlowEntry& e) const {
+    if (on_retire_) {
+      on_retire_(e);
+    }
+  }
 
   FlowTableConfig config_;
   List lru_;
   std::unordered_map<FiveTuple, List::iterator, FiveTupleHash> index_;
   FlowTableStats stats_;
+  RetireCallback on_retire_;
 };
 
 }  // namespace dpi
