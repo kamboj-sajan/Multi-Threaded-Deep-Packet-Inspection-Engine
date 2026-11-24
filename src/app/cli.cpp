@@ -1,6 +1,22 @@
 #include "dpi/app/cli.hpp"
 
+#include <charconv>
+
 namespace dpi {
+namespace {
+
+// Parses a decimal count in [1, max]; std::stoul would accept "-1" and "3x".
+std::optional<std::size_t> parse_count(const std::string& text, std::size_t max) {
+  std::size_t value = 0;
+  const char* end = text.data() + text.size();
+  const auto [ptr, ec] = std::from_chars(text.data(), end, value);
+  if (ec != std::errc{} || ptr != end || value == 0 || value > max) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+}  // namespace
 
 std::string usage_text() {
   return "usage: dpi_engine <input.pcap> <output.pcap> [options]\n"
@@ -9,6 +25,10 @@ std::string usage_text() {
          "packets to <output.pcap> and prints a statistics report.\n"
          "\n"
          "options:\n"
+         "  --lbs <n>            load-balancer threads (default 2)\n"
+         "  --fps-per-lb <n>     fast-path threads per load balancer (default 2)\n"
+         "  --queue-size <n>     capacity of each inter-thread queue (default 4096)\n"
+         "  --sequential         run every stage on one thread (correctness baseline)\n"
          "  --report <file>      also write the report as JSON\n"
          "  -h, --help           show this help\n";
 }
@@ -33,12 +53,41 @@ CliParseResult parse_cli(const std::vector<std::string>& args) {
       result.show_help = true;
       return result;
     }
+    // Parses the value of a numeric option into `target`.
+    auto count = [&](std::size_t& target, std::size_t max) {
+      const auto v = value();
+      if (!v) {
+        return false;
+      }
+      const auto n = parse_count(*v, max);
+      if (!n) {
+        result.error = arg + " expects a whole number from 1 to " + std::to_string(max) + ", got '" + *v + "'";
+        return false;
+      }
+      target = *n;
+      return true;
+    };
+
     if (arg == "--report") {
       const auto v = value();
       if (!v) {
         return result;
       }
       options.report_path = *v;
+    } else if (arg == "--lbs") {
+      if (!count(options.num_lbs, kMaxLbs)) {
+        return result;
+      }
+    } else if (arg == "--fps-per-lb") {
+      if (!count(options.fps_per_lb, kMaxFpsPerLb)) {
+        return result;
+      }
+    } else if (arg == "--queue-size") {
+      if (!count(options.queue_size, kMaxQueueSize)) {
+        return result;
+      }
+    } else if (arg == "--sequential") {
+      options.sequential = true;
     } else if (arg.starts_with("-")) {
       result.error = "unknown option " + arg;
       return result;

@@ -29,6 +29,34 @@ TEST(Cli, RejectsBadInvocations) {
   EXPECT_NE(unknown.error.find("--bogus"), std::string::npos);
 }
 
+TEST(Cli, DefaultsToTwoByTwoPipeline) {
+  const auto r = parse_cli({"in", "out"});
+  ASSERT_TRUE(r.options.has_value());
+  EXPECT_EQ(r.options->num_lbs, 2u);
+  EXPECT_EQ(r.options->fps_per_lb, 2u);
+  EXPECT_EQ(r.options->queue_size, 4096u);
+  EXPECT_FALSE(r.options->sequential);
+}
+
+TEST(Cli, ParsesThreadLayout) {
+  const auto r = parse_cli({"in", "out", "--lbs", "4", "--fps-per-lb", "3", "--queue-size", "64", "--sequential"});
+  ASSERT_TRUE(r.options.has_value()) << r.error;
+  EXPECT_EQ(r.options->num_lbs, 4u);
+  EXPECT_EQ(r.options->fps_per_lb, 3u);
+  EXPECT_EQ(r.options->queue_size, 64u);
+  EXPECT_TRUE(r.options->sequential);
+}
+
+TEST(Cli, RejectsBadCounts) {
+  for (const char* bad : {"0", "-1", "3x", "", "65", "99999999999999999999"}) {
+    const auto r = parse_cli({"in", "out", "--lbs", bad});
+    EXPECT_FALSE(r.options.has_value()) << "accepted --lbs '" << bad << "'";
+    EXPECT_NE(r.error.find("--lbs"), std::string::npos);
+  }
+  EXPECT_FALSE(parse_cli({"in", "out", "--queue-size", "0"}).options.has_value());
+  EXPECT_FALSE(parse_cli({"in", "out", "--fps-per-lb"}).options.has_value());
+}
+
 TEST(Cli, HelpFlag) {
   EXPECT_TRUE(parse_cli({"--help"}).show_help);
   EXPECT_TRUE(parse_cli({"in", "-h"}).show_help);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -10,7 +11,16 @@ struct CliOptions {
   std::string input_path;
   std::string output_path;
   std::optional<std::string> report_path;
+  std::size_t num_lbs = 2;
+  std::size_t fps_per_lb = 2;
+  std::size_t queue_size = 4096;
+  bool sequential = false;  // Run the single-threaded baseline instead.
 };
+
+// Upper bounds that catch typos ("--lbs 200") before spawning threads.
+inline constexpr std::size_t kMaxLbs = 64;
+inline constexpr std::size_t kMaxFpsPerLb = 64;
+inline constexpr std::size_t kMaxQueueSize = 1u << 20;
 
 struct CliParseResult {
   std::optional<CliOptions> options;  // Set on success.

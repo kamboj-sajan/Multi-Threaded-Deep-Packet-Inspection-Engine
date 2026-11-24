@@ -27,8 +27,12 @@ int run(const dpi::CliOptions& options) {
                             .linktype = reader.info().linktype,
                             .precision = reader.info().precision});
 
-  const dpi::EngineConfig config;
-  const dpi::RunStats stats = dpi::run_sequential(reader, writer, config);
+  dpi::EngineConfig config;
+  config.num_lbs = options.num_lbs;
+  config.fps_per_lb = options.fps_per_lb;
+  config.queue_capacity = options.queue_size;
+  const dpi::RunStats stats = options.sequential ? dpi::run_sequential(reader, writer, config)
+                                                 : dpi::run_pipeline(reader, writer, config);
 
   std::cout << dpi::format_text_report(stats);
   if (options.report_path) {

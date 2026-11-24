@@ -13,6 +13,14 @@ if(TCPDUMP_EXECUTABLE)
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cli_tcpdump_check.sh
             $<TARGET_FILE:dpi_engine> ${TCPDUMP_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/tests/data/mixed.pcap 244)
+  add_test(NAME cli.tcpdump_reads_output.mixed_4x4
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cli_tcpdump_check.sh
+            $<TARGET_FILE:dpi_engine> ${TCPDUMP_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tests/data/mixed.pcap 244 --lbs 4 --fps-per-lb 4)
+  add_test(NAME cli.tcpdump_reads_output.mixed_sequential
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cli_tcpdump_check.sh
+            $<TARGET_FILE:dpi_engine> ${TCPDUMP_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/tests/data/mixed.pcap 244 --sequential)
 else()
   message(STATUS "tcpdump not found: skipping the tcpdump output check")
 endif()
