@@ -1,7 +1,8 @@
 add_library(dpi_pipeline
   stats.cpp
   stages.cpp
-  sequential.cpp)
+  sequential.cpp
+  report.cpp)
 add_library(dpi::pipeline ALIAS dpi_pipeline)
 target_include_directories(dpi_pipeline PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(dpi_pipeline
