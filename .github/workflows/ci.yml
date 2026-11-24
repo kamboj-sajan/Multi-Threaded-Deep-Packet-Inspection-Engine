@@ -54,3 +54,22 @@ jobs:
       - run: cmake --preset ${{ matrix.preset }}
       - run: cmake --build --preset ${{ matrix.preset }}
       - run: ctest --preset ${{ matrix.preset }}
+
+  fuzz-smoke:
+    name: clang-18 / libFuzzer smoke (60 s per target)
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-18
+      CXX: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang-18 libclang-rt-18-dev
+      - name: Reduce ASLR entropy for sanitizers
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - run: cmake --preset fuzz
+      - run: cmake --build --preset fuzz
+      - name: Fuzz the packet parser
+        run: build/fuzz/fuzz/fuzz_packet_parser -max_total_time=60 -print_final_stats=1 fuzz/corpus/packet_parser
+      - name: Fuzz TLS SNI / HTTP Host extraction
+        run: build/fuzz/fuzz/fuzz_inspect -max_total_time=60 -print_final_stats=1 fuzz/corpus/inspect

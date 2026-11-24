@@ -49,6 +49,17 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "DPI_SANITIZER": "thread"
       }
+    },
+    {
+      "name": "fuzz",
+      "displayName": "libFuzzer + ASan + UBSan (Linux Clang)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "DPI_SANITIZER": "address,undefined",
+        "DPI_BUILD_FUZZ": "ON",
+        "DPI_BUILD_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -67,6 +78,10 @@
     {
       "name": "tsan",
       "configurePreset": "tsan"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz"
     }
   ],
   "testPresets": [

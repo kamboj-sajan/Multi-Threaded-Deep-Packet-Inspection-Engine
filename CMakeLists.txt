@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(DPI_BUILD_TESTS "Build unit and integration tests" ON)
 option(DPI_BUILD_BENCH "Build benchmarks" OFF)
+option(DPI_BUILD_FUZZ "Build libFuzzer targets (Clang only)" OFF)
 set(DPI_SANITIZER "" CACHE STRING
     "Sanitizers to build with: empty, 'address,undefined' or 'thread'")
 
@@ -21,6 +22,12 @@ include(cmake/Warnings.cmake)
 
 find_package(Threads REQUIRED)
 
+# Fuzzing needs coverage instrumentation in the libraries under test, not
+# just in the fuzz targets, so it is enabled before any library is defined.
+if(DPI_BUILD_FUZZ)
+  add_compile_options(-fsanitize=fuzzer-no-link)
+endif()
+
 add_subdirectory(src)
 
 if(DPI_BUILD_TESTS)
@@ -30,4 +37,8 @@ endif()
 
 if(DPI_BUILD_BENCH)
   add_subdirectory(bench)
+endif()
+
+if(DPI_BUILD_FUZZ)
+  add_subdirectory(fuzz)
 endif()
