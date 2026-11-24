@@ -103,8 +103,9 @@ TEST(FastPathStage, TracksBothDirectionsAsOneFlow) {
   EXPECT_EQ(fp.stats().forwarded, 4u);
   EXPECT_EQ(fp.stats().non_ip, 1u);
   EXPECT_EQ(fp.stats().flows_created, 1u);
-  EXPECT_EQ(fp.stats().apps[static_cast<std::size_t>(AppId::Unknown)].flows, 1u);
-  EXPECT_EQ(fp.stats().apps[static_cast<std::size_t>(AppId::Unknown)].packets, 3u);
+  // No payload yet, so the port-based guess (443 -> HTTPS) stands.
+  EXPECT_EQ(fp.stats().apps[static_cast<std::size_t>(AppId::HTTPS)].flows, 1u);
+  EXPECT_EQ(fp.stats().apps[static_cast<std::size_t>(AppId::HTTPS)].packets, 3u);
 }
 
 TEST(FastPathStage, SynAfterResetStartsANewFlow) {
@@ -116,7 +117,7 @@ TEST(FastPathStage, SynAfterResetStartsANewFlow) {
   }
   fp.finish();
   EXPECT_EQ(fp.stats().flows_created, 2u);
-  EXPECT_EQ(fp.stats().apps[0].packets, 4u);  // 2 + 2 across the two flows
+  EXPECT_EQ(fp.stats().apps[static_cast<std::size_t>(AppId::HTTPS)].packets, 4u);  // 2 + 2
 }
 
 TEST(FastPathStage, IdleGapSplitsAFlow) {

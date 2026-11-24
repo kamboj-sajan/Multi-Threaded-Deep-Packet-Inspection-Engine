@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "dpi/common/types.hpp"
 #include "dpi/flow/five_tuple.hpp"
@@ -35,7 +36,18 @@ struct FlowEntry {
   bool inspection_done = false;  // Classified, or gave up: fast path from now on.
   Verdict verdict = Verdict::Forward;
 
+  // Minimal reassembly of the client's first bytes, used only while a
+  // ClientHello / HTTP request is split across TCP segments. Empty (and
+  // unallocated) for almost every flow.
+  std::vector<std::uint8_t> pending_client_bytes;
+  std::uint32_t next_client_seq = 0;
+
   bool is_from_client(Direction d) const noexcept { return d == client_direction; }
+
+  // The port the client connected to.
+  std::uint16_t server_port() const noexcept {
+    return client_direction == Direction::LoToHi ? key.port_hi : key.port_lo;
+  }
 
   void account(Direction d, std::uint32_t bytes, std::uint64_t ts_ns) noexcept {
     DirectionCounters& c = is_from_client(d) ? to_server : to_client;

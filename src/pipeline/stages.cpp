@@ -47,7 +47,9 @@ std::optional<WorkItem> LoadBalancerStage::process(RoutedPacket&& in) {
 // --- FastPathStage ----------------------------------------------------------
 
 FastPathStage::FastPathStage(FastPathConfig config)
-    : config_(config), table_(config.flow_table) {
+    : config_(config),
+      inspector_(config.classifier ? *config.classifier : Classifier::builtin(), config.inspection),
+      table_(config.flow_table) {
   table_.set_retire_callback([this](const FlowEntry& flow) { record_retired_flow(flow); });
 }
 
@@ -58,7 +60,9 @@ Verdict FastPathStage::process(const Packet& packet, const ParsedPacket& parsed)
 
   Verdict verdict = Verdict::Forward;
   if (parsed.l3 == L3Kind::Ipv4) {
-    verdict = track_flow(packet, parsed).verdict;
+    const Tracked tracked = track_flow(packet, parsed);
+    inspector_.inspect(*tracked.flow, parsed, packet.data(), tracked.from_client);
+    verdict = tracked.flow->verdict;
   } else {
     ++stats_.non_ip;  // No flow to attach it to; carried through untouched.
   }
@@ -71,10 +75,9 @@ Verdict FastPathStage::process(const Packet& packet, const ParsedPacket& parsed)
   return verdict;
 }
 
-FlowEntry& FastPathStage::track_flow(const Packet& packet, const ParsedPacket& parsed) {
+FastPathStage::Tracked FastPathStage::track_flow(const Packet& packet, const ParsedPacket& parsed) {
   const NormalizedTuple tuple = normalize(parsed.tuple());
-  FlowEntry* flow =
-      table_.find_or_create(tuple.key, tuple.direction, parsed.tcp_flags, packet.ts_ns).entry;
+  auto [flow, created] = table_.find_or_create(tuple.key, tuple.direction, parsed.tcp_flags, packet.ts_ns);
 
   // A bare SYN on a connection that already closed is the 5-tuple being
   // reused by a new connection, so it gets a fresh flow (and fresh
@@ -82,13 +85,18 @@ FlowEntry& FastPathStage::track_flow(const Packet& packet, const ParsedPacket& p
   const bool bare_syn = (parsed.tcp_flags & (tcpflag::kSyn | tcpflag::kAck)) == tcpflag::kSyn;
   if (parsed.l4 == L4Kind::Tcp && bare_syn && flow->tcp.is_terminal()) {
     flow = &table_.restart(*flow, tuple.direction, parsed.tcp_flags, packet.ts_ns);
+    created = true;
+  }
+  if (created) {
+    inspector_.on_new_flow(*flow, parsed);
   }
 
+  const bool from_client = flow->is_from_client(tuple.direction);
   flow->account(tuple.direction, packet.caplen(), packet.ts_ns);
   if (parsed.l4 == L4Kind::Tcp) {
-    flow->tcp.on_packet(parsed.tcp_flags, flow->is_from_client(tuple.direction));
+    flow->tcp.on_packet(parsed.tcp_flags, from_client);
   }
-  return *flow;
+  return {flow, from_client};
 }
 
 void FastPathStage::record_retired_flow(const FlowEntry& flow) {

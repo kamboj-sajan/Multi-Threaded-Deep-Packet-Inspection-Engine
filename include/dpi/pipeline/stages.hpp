@@ -9,10 +9,12 @@
 #include <cstdint>
 #include <optional>
 
+#include "dpi/classifier/classifier.hpp"
 #include "dpi/flow/flow_table.hpp"
 #include "dpi/parser/packet_parser.hpp"
 #include "dpi/pcap_io/pcap_reader.hpp"
 #include "dpi/pcap_io/pcap_writer.hpp"
+#include "dpi/pipeline/flow_inspector.hpp"
 #include "dpi/pipeline/stats.hpp"
 
 namespace dpi {
@@ -74,12 +76,16 @@ class LoadBalancerStage {
 
 struct FastPathConfig {
   FlowTableConfig flow_table;
+  InspectionConfig inspection;
+  // Shared, immutable domain table; nullptr means the built-in one.
+  const Classifier* classifier = nullptr;
   // How often (in capture time) to sweep idle flows out of memory.
   std::uint64_t sweep_interval_ns = 1'000'000'000ULL;
 };
 
-// Stage 3: flow tracking and the per-packet verdict. Owns its FlowTable
-// exclusively, so nothing here is shared with other threads.
+// Stage 3: flow tracking, inspection and the per-packet verdict. Owns its
+// FlowTable exclusively, so no flow state is shared with other threads.
+// Once a flow is classified it skips inspection entirely (the fast path).
 class FastPathStage {
  public:
   explicit FastPathStage(FastPathConfig config = {});
@@ -94,11 +100,16 @@ class FastPathStage {
   const FpStats& stats() const noexcept { return stats_; }
 
  private:
-  FlowEntry& track_flow(const Packet& packet, const ParsedPacket& parsed);
+  struct Tracked {
+    FlowEntry* flow;
+    bool from_client;
+  };
+  Tracked track_flow(const Packet& packet, const ParsedPacket& parsed);
   void record_retired_flow(const FlowEntry& flow);
   void maybe_sweep(std::uint64_t now_ns);
 
   FastPathConfig config_;
+  FlowInspector inspector_;
   FlowTable table_;
   FpStats stats_;
   std::uint64_t next_sweep_ns_ = 0;
