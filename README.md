@@ -6,6 +6,11 @@ extracts the TLS ClientHello SNI and HTTP Host to classify traffic, applies
 blocking rules, writes the allowed packets to a new PCAP, and prints a
 statistics report.
 
+![Terminal demo: blocking rules, SNI classification, a 4x4 thread run and the test suite](docs/demo.gif)
+
+<sub>Recorded with [vhs](https://github.com/charmbracelet/vhs) from
+[tools/demo/demo.tape](tools/demo/demo.tape); re-record with `vhs tools/demo/demo.tape`.</sub>
+
 The work is split into concurrent stages: a reader, N load-balancer
 threads, K fast-path threads per load balancer, and a writer. They are
 connected by bounded, thread-safe queues. Every packet of a flow, in both
@@ -154,7 +159,6 @@ Top SNIs / HTTP hosts (flows)
    3. api.github.com                               1
    ...
 Performance
-  elapsed             0.001 s
   ...
 ```
 
