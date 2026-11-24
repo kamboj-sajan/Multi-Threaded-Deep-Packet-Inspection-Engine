@@ -153,7 +153,8 @@ std::string format_text_report(const RunStats& s) {
 
   o << std::fixed << std::setprecision(3);
   o << "Performance\n";
-  o << "  elapsed      " << std::setw(12) << s.elapsed_seconds << " s\n";
+  // Milliseconds: small captures finish in well under a second.
+  o << "  elapsed      " << std::setw(12) << s.elapsed_seconds * 1000.0 << " ms\n";
   o << std::setprecision(0);
   o << "  rate         " << std::setw(12) << tp.packets_per_second << " packets/s\n";
   o << std::setprecision(1);
