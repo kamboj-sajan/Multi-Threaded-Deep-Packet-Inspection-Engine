@@ -1,4 +1,4 @@
-dpi_add_test(test_integration SOURCES test_integration.cpp test_determinism.cpp LIBS dpi::pipeline)
+dpi_add_test(test_integration SOURCES test_integration.cpp test_determinism.cpp test_classification.cpp LIBS dpi::pipeline)
 
 # CLI-level checks: the real executable, its exit codes, and an output file
 # that an independent reader (tcpdump) accepts.

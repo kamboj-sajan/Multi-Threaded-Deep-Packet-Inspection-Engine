@@ -79,7 +79,7 @@ TEST(Integration, OutputHoldsExactlyTheValidPacketsInOrder) {
 }
 
 TEST(Integration, StatsInvariantHoldsOnEveryCapture) {
-  for (const char* name : {"mixed.pcap", "malformed.pcap", "many_flows.pcap"}) {
+  for (const char* name : {"mixed.pcap", "malformed.pcap", "many_flows.pcap", "tls_split.pcap"}) {
     const RunStats s = run_file_sequential(name).stats;
     EXPECT_EQ(s.total_packets(), s.forwarded() + s.dropped() + s.malformed()) << name;
     EXPECT_EQ(s.writer.packets, s.forwarded()) << name;

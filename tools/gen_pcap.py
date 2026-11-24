@@ -19,6 +19,8 @@ Captures:
   malformed.pcap   Two valid packets, every malformed kind, and a final
                    record cut short.
   many_flows.pcap  1000 interleaved flows, used to compare thread layouts.
+  tls_split.pcap   ClientHellos and an HTTP request split across TCP
+                   segments (in order, and one out of order).
 """
 
 from __future__ import annotations
@@ -107,13 +109,23 @@ def tls_ext(ext_type: int, body: bytes) -> bytes:
     return struct.pack("!HH", ext_type, len(body)) + body
 
 
-def client_hello(rng: random.Random, sni: str | None, extra_extensions: int = 0) -> bytes:
-    """A TLS 1.3-capable ClientHello laid out like a current browser's."""
-    exts = [tls_ext(0x0A0A, b"")]  # GREASE
-    if sni is not None:
+def client_hello(rng: random.Random, sni: str | None, extra_extensions: int = 0,
+                 padding: int = 0, sni_last: bool = False) -> bytes:
+    """A TLS 1.3-capable ClientHello laid out like a current browser's.
+
+    `padding` adds a padding extension (as browsers do, RFC 7685) and
+    `sni_last` moves server_name to the end, so that in a hello larger than
+    one TCP segment the SNI lands in a later segment (browsers randomise
+    extension order, so this happens in real traffic).
+    """
+    def server_name_ext() -> bytes:
         name = sni.encode()
         entry = struct.pack("!BH", 0, len(name)) + name
-        exts.append(tls_ext(0x0000, struct.pack("!H", len(entry)) + entry))
+        return tls_ext(0x0000, struct.pack("!H", len(entry)) + entry)
+
+    exts = [tls_ext(0x0A0A, b"")]  # GREASE
+    if sni is not None and not sni_last:
+        exts.append(server_name_ext())
     exts.append(tls_ext(0x0017, b""))                      # extended_master_secret
     exts.append(tls_ext(0xFF01, b"\x00"))                  # renegotiation_info
     groups = [0x1A1A, 0x001D, 0x0017, 0x0018]
@@ -135,6 +147,10 @@ def client_hello(rng: random.Random, sni: str | None, extra_extensions: int = 0)
     exts.append(tls_ext(0x001B, b"\x02\x00\x02"))          # compress_certificate
     for i in range(extra_extensions):                      # private-use filler
         exts.append(tls_ext(0xFE00 + i, rng.randbytes(4)))
+    if padding:
+        exts.append(tls_ext(0x0015, b"\x00" * padding))     # padding
+    if sni is not None and sni_last:
+        exts.append(server_name_ext())
     exts.append(tls_ext(0x1A1A, b"\x00"))                  # GREASE
     ext_bytes = b"".join(exts)
 
@@ -240,6 +256,30 @@ class Builder:
                      (True, b"\x17\x03\x03\x00\x40" + self.rng.randbytes(64))]
         return FlowSpec(self.tcp_session(cip, sip, cport, 443, exchanges, vlan=vlan, **kw),
                         sni=sni, app=app, note="HTTPS")
+
+    def split_https(self, cip, sip, cport, sni, app, segments, reorder=False) -> FlowSpec:
+        """HTTPS whose ClientHello (1.9 KB, SNI at the end) spans `segments`
+        TCP segments. With `reorder`, the second segment arrives first."""
+        hello = client_hello(self.rng, sni, padding=1600, sni_last=True)
+        check_client_hello(hello, sni)
+        size = -(-len(hello) // segments)  # ceiling division
+        exchanges = [(True, hello[i:i + size]) for i in range(0, len(hello), size)]
+        exchanges.append((False, server_tls_bytes(self.rng, 300)))
+        frames = self.tcp_session(cip, sip, cport, 443, exchanges)
+        note = f"ClientHello in {segments} segments"
+        if reorder:
+            # Frames: SYN, SYN-ACK, ACK, then (data, ack) per exchange.
+            frames[3], frames[5] = frames[5], frames[3]
+            note += ", second segment first"
+        return FlowSpec(frames, sni=None if reorder else sni, app=app, note=note)
+
+    def split_http(self, cip, sip, cport, host, app) -> FlowSpec:
+        """HTTP request whose Host header is in the second TCP segment."""
+        first = b"GET /index.html HTTP/1.1\r\nUser-Agent: dpi-test/1.0\r\nAccept: */*\r\n"
+        second = f"Host: {host}\r\n\r\n".encode()
+        response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+        frames = self.tcp_session(cip, sip, cport, 80, [(True, first), (True, second), (False, response)])
+        return FlowSpec(frames, sni=host, app=app, note="HTTP request in 2 segments")
 
     def http(self, cip, sip, cport, host, app) -> FlowSpec:
         request = (f"GET / HTTP/1.1\r\nHost: {host}\r\nUser-Agent: dpi-test/1.0\r\n"
@@ -369,6 +409,19 @@ def malformed_capture() -> Capture:
     return c
 
 
+def tls_split_capture() -> Capture:
+    b = Builder(seed=4)
+    c = Capture("tls_split.pcap")
+    client = "192.168.7.10"
+    c.flows.append(b.split_https(client, "142.250.72.14", 51001, "www.youtube.com", "YouTube", 2))
+    c.flows.append(b.split_https(client, "140.82.112.3", 51002, "github.com", "GitHub", 3))
+    # Out of order: reassembly gives up, so only the port (443) is known.
+    c.flows.append(b.split_https(client, "52.89.124.203", 51003, "www.netflix.com", "HTTPS", 2,
+                                 reorder=True))
+    c.flows.append(b.split_http(client, "52.89.124.203", 51004, "www.netflix.com", "Netflix"))
+    return c
+
+
 def many_flows_capture() -> Capture:
     b = Builder(seed=3)
     c = Capture("many_flows.pcap")
@@ -475,7 +528,8 @@ def main() -> None:
     manifest = ["# Test captures", "",
                 "Generated by `tools/gen_pcap.py`. Do not edit by hand; re-run the script.",
                 "Counts below are computed by the generator from what it built.", ""]
-    for seed, capture in enumerate([mixed_capture(), malformed_capture(), many_flows_capture()], 100):
+    for seed, capture in enumerate([mixed_capture(), malformed_capture(), many_flows_capture(),
+                                     tls_split_capture()], 100):
         frames = interleave(capture, seed)
         write_pcap(args.out / capture.name, frames, capture.truncated_tail)
         manifest += summarise(capture, frames)

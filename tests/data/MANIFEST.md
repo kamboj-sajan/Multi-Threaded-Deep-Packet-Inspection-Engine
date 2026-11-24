@@ -156,3 +156,28 @@ Flows by SNI / Host:
 - www.instagram.com: 82
 - www.netflix.com: 73
 - www.youtube.com: 70
+
+## tls_split.pcap
+
+- total records: 50
+- valid IPv4 packets: 50
+- non-IP packets: 0
+- malformed packets: 0
+- flows: 4
+- snaplen-truncated packets (caplen < origlen): 0
+
+Expected classification (flows by app):
+
+- GitHub: 1
+- HTTPS: 1
+- Netflix: 1
+- YouTube: 1
+
+Flows:
+
+| # | packets | SNI / Host | app | note |
+|---|---|---|---|---|
+| 0 | 12 | www.youtube.com | YouTube | ClientHello in 2 segments |
+| 1 | 14 | github.com | GitHub | ClientHello in 3 segments |
+| 2 | 12 |  | HTTPS | ClientHello in 2 segments, second segment first |
+| 3 | 12 | www.netflix.com | Netflix | HTTP request in 2 segments |

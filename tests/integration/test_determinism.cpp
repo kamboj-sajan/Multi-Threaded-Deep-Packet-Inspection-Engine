@@ -131,7 +131,7 @@ std::string layout_name(const ::testing::TestParamInfo<Determinism::ParamType>& 
 
 INSTANTIATE_TEST_SUITE_P(
     Layouts, Determinism,
-    ::testing::Combine(::testing::Values("mixed.pcap", "malformed.pcap", "many_flows.pcap"),
+    ::testing::Combine(::testing::Values("mixed.pcap", "malformed.pcap", "many_flows.pcap", "tls_split.pcap"),
                        ::testing::Values(layout(1, 1, 4096), layout(2, 2, 4096), layout(4, 4, 4096),
                                          layout(3, 5, 16), layout(4, 4, 1), layout(1, 8, 2))),
     layout_name);
